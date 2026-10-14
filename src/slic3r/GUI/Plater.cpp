@@ -190,6 +190,8 @@
 
 #include "PhysicalPrinterDialog.hpp"
 #include "PrintHostDialogs.hpp"
+#include "PrintStashDialog.hpp"
+#include "slic3r/Utils/PrintStash.hpp"
 #include "PlateSettingsDialog.hpp"
 #include "DailyTips.hpp"
 #include "CreatePresetsDialog.hpp"
@@ -10465,6 +10467,7 @@ struct Plater::priv
     void on_action_print_all(SimpleEvent&);
     void on_action_export_gcode(SimpleEvent&);
     void on_action_send_gcode(SimpleEvent&);
+    void on_action_send_printstash(SimpleEvent&);
     void on_action_export_sliced_file(SimpleEvent&);
     void on_action_export_all_sliced_file(SimpleEvent&);
     void on_action_select_sliced_plate(wxCommandEvent& evt);
@@ -11010,6 +11013,7 @@ Plater::priv::priv(Plater *q, MainFrame *main_frame)
         q->Bind(EVT_GLTOOLBAR_PRINT_ALL, &priv::on_action_print_all, this);
         q->Bind(EVT_GLTOOLBAR_EXPORT_GCODE, &priv::on_action_export_gcode, this);
         q->Bind(EVT_GLTOOLBAR_SEND_GCODE, &priv::on_action_send_gcode, this);
+        q->Bind(EVT_GLTOOLBAR_SEND_PRINTSTASH, &priv::on_action_send_printstash, this);
         q->Bind(EVT_GLTOOLBAR_EXPORT_SLICED_FILE, &priv::on_action_export_sliced_file, this);
         q->Bind(EVT_GLTOOLBAR_EXPORT_ALL_SLICED_FILE, &priv::on_action_export_all_sliced_file, this);
         q->Bind(EVT_GLTOOLBAR_SEND_TO_PRINTER, &priv::on_action_export_to_sdcard, this);
@@ -15880,6 +15884,12 @@ void Plater::priv::on_action_send_gcode(SimpleEvent&)
         BOOST_LOG_TRIVIAL(debug) << __FUNCTION__ << ":received export gcode event\n" ;
         q->send_gcode_legacy();
     }
+}
+
+void Plater::priv::on_action_send_printstash(SimpleEvent&)
+{
+    if (q != nullptr)
+        q->send_to_printstash();
 }
 
 void Plater::priv::on_action_export_sliced_file(SimpleEvent&)
@@ -21842,6 +21852,55 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         p->export_gcode(fs::path(), false, std::move(upload_job));
     }
 }
+bool Plater::edit_printstash_settings()
+{
+    PrintStashDialog dlg(this, PrintStashSettings::load(*wxGetApp().app_config));
+    if (dlg.ShowModal() != wxID_OK)
+        return false;
+    dlg.get_settings().save(*wxGetApp().app_config);
+    wxGetApp().app_config->save();
+    return true;
+}
+
+void Plater::send_to_printstash()
+{
+    if (p->model.objects.empty())
+        return;
+
+    if (!PrintStashSettings::load(*wxGetApp().app_config).valid()) {
+        if (!edit_printstash_settings())
+            return;
+    }
+    const PrintStashSettings settings = PrintStashSettings::load(*wxGetApp().app_config);
+    if (!settings.valid()) {
+        show_error(this, _L("PrintStash is not configured: host, username and API key are required."));
+        return;
+    }
+
+    PrintHostJob upload_job;
+    upload_job.printhost.reset(new PrintStash(settings));
+
+    fs::path default_output_file;
+    try {
+        // Make sure the background process is up to date, so that the output file name template gets the right values.
+        unsigned int state = p->update_restart_background_process(false, false);
+        if (state & priv::UPDATE_BACKGROUND_PROCESS_INVALID)
+            return;
+        default_output_file = p->background_process.output_filepath_for_project("");
+    } catch (const Slic3r::PlaceholderParserError& ex) {
+        show_error(this, ex.what(), true);
+        return;
+    } catch (const std::exception& ex) {
+        show_error(this, ex.what(), false);
+        return;
+    }
+    upload_job.upload_data.use_3mf     = false;
+    upload_job.upload_data.upload_path = default_output_file.filename();
+
+    // Slices (if needed), generates the G-code and hands it over to the print host upload queue.
+    p->export_gcode(fs::path(), false, std::move(upload_job));
+}
+
 int Plater::send_gcode(int plate_idx, Export3mfProgressFn proFn)
 {
     int result = 0;

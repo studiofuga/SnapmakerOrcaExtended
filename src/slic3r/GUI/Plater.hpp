@@ -530,6 +530,10 @@ public:
      * -2: send all gcode to target machine */
     int send_gcode(int plate_idx = -1, Export3mfProgressFn proFn = nullptr);
     void send_gcode_legacy(int plate_idx = -1, Export3mfProgressFn proFn = nullptr, bool use_3mf = false);
+    // PrintStash: push the sliced G-code of the current plate to a PrintStash server.
+    void send_to_printstash();
+    // Opens the PrintStash connection settings dialog. Returns true if the user confirmed it.
+    bool edit_printstash_settings();
     int export_config_3mf(int plate_idx = -1, Export3mfProgressFn proFn = nullptr);
     //BBS jump to nonitor after print job finished
     void send_calibration_job_finished(wxCommandEvent &evt);

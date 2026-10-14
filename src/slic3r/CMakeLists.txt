@@ -388,6 +388,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/PrinterWebView.hpp
     GUI/PrintHostDialogs.cpp
     GUI/PrintHostDialogs.hpp
+    GUI/PrintStashDialog.cpp
+    GUI/PrintStashDialog.hpp
     GUI/PrintOptionsDialog.cpp
     GUI/PrintOptionsDialog.hpp
     GUI/PrivacyUpdateDialog.cpp
@@ -631,6 +633,8 @@ set(SLIC3R_GUI_SOURCES
     Utils/PresetUpdater.hpp
     Utils/PrintHost.cpp
     Utils/PrintHost.hpp
+    Utils/PrintStash.cpp
+    Utils/PrintStash.hpp
     Utils/Process.cpp
     Utils/Process.hpp
     Utils/ProfileDescription.hpp

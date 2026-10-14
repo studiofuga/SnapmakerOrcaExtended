@@ -1829,6 +1829,8 @@ wxBoxSizer* MainFrame::create_side_tools()
                 wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_EXPORT_GCODE));
             else if (m_print_select == eSendGcode)
                 wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SEND_GCODE));
+            else if (m_print_select == ePrintStash)
+                wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_SEND_PRINTSTASH));
             else if (m_print_select == eUploadGcode)
                 wxPostEvent(m_plater, SimpleEvent(EVT_GLTOOLBAR_UPLOAD_GCODE));
             else if (m_print_select == eExportSlicedFile)
@@ -1907,8 +1909,29 @@ wxBoxSizer* MainFrame::create_side_tools()
                 p->Dismiss();
             });
 
+
+            // PrintStash: push the sliced G-code straight to a PrintStash server
+            SideButton* printstash_btn = new SideButton(p, _L("Send to PrintStash"), "");
+            printstash_btn->SetCornerRadius(0);
+            printstash_btn->Bind(wxEVT_BUTTON, [this, p](wxCommandEvent&) {
+                m_print_btn->SetLabel(_L("Send to PrintStash"));
+                m_print_select = ePrintStash;
+                m_print_enable = get_enable_print_status();
+                m_print_btn->Enable(m_print_enable);
+                this->Layout();
+                p->Dismiss();
+            });
+            SideButton* printstash_cfg_btn = new SideButton(p, _L("PrintStash settings..."), "");
+            printstash_cfg_btn->SetCornerRadius(0);
+            printstash_cfg_btn->Bind(wxEVT_BUTTON, [this, p](wxCommandEvent&) {
+                p->Dismiss();
+                wxGetApp().plater()->edit_printstash_settings();
+            });
+
             p->append_button(send_gcode_btn);
             p->append_button(export_gcode_btn);
+            p->append_button(printstash_btn);
+            p->append_button(printstash_cfg_btn);
         } else {
             SideButton* print_plate_btn = new SideButton(p, _L("Print"), "");
             print_plate_btn->SetCornerRadius(0);
@@ -1991,7 +2014,28 @@ wxBoxSizer* MainFrame::create_side_tools()
                 this->Layout();
                 p->Dismiss();
             });
+
+            // PrintStash: push the sliced G-code straight to a PrintStash server
+            SideButton* printstash_btn = new SideButton(p, _L("Send to PrintStash"), "");
+            printstash_btn->SetCornerRadius(0);
+            printstash_btn->Bind(wxEVT_BUTTON, [this, p](wxCommandEvent&) {
+                m_print_btn->SetLabel(_L("Send to PrintStash"));
+                m_print_select = ePrintStash;
+                m_print_enable = get_enable_print_status();
+                m_print_btn->Enable(m_print_enable);
+                this->Layout();
+                p->Dismiss();
+            });
+            SideButton* printstash_cfg_btn = new SideButton(p, _L("PrintStash settings..."), "");
+            printstash_cfg_btn->SetCornerRadius(0);
+            printstash_cfg_btn->Bind(wxEVT_BUTTON, [this, p](wxCommandEvent&) {
+                p->Dismiss();
+                wxGetApp().plater()->edit_printstash_settings();
+            });
+
             p->append_button(export_gcode_btn);
+            p->append_button(printstash_btn);
+            p->append_button(printstash_cfg_btn);
         }
 
         p->Popup(m_print_btn);
@@ -2107,6 +2151,12 @@ bool MainFrame::get_enable_print_status()
         if (!current_plate->is_slice_result_valid())
             enable = false;
         if (!can_send_gcode())
+            enable = false;
+        enable = enable && !is_all_plates;
+    }
+    else if (m_print_select == ePrintStash)
+    {
+        if (!current_plate->is_slice_result_valid())
             enable = false;
         enable = enable && !is_all_plates;
     }
