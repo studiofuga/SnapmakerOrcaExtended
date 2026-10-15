@@ -1005,6 +1005,8 @@ public:
     bool                        enable_timelapse_print() const;
 
 	std::string                 output_filename(const std::string &filename_base = std::string()) const override;
+	// Same as above, but with an explicit filename template instead of the "filename_format" setting.
+	std::string                 output_filename_with_format(const std::string &format, const std::string &filename_base) const;
 
 	std::string                 get_model_name() const;
 	std::string                 get_plate_number_formatted() const;

@@ -3460,6 +3460,11 @@ void Print::_make_wipe_tower()
 // Use the final print statistics if available, or just keep the print statistics placeholders if not available yet (before G-code is finalized).
 std::string Print::output_filename(const std::string &filename_base) const
 {
+    return this->output_filename_with_format(m_config.filename_format.value, filename_base);
+}
+
+std::string Print::output_filename_with_format(const std::string &format, const std::string &filename_base) const
+{
     // Set the placeholders for the data know first after the G-code export is finished.
     // These values will be just propagated into the output file name.
     DynamicConfig config = this->finished() ? this->print_statistics().config() : this->print_statistics().placeholders();
@@ -3469,7 +3474,7 @@ std::string Print::output_filename(const std::string &filename_base) const
     config.set_key_value("plate_number", new ConfigOptionString(get_plate_number_formatted()));
     config.set_key_value("model_name", new ConfigOptionString(get_model_name()));
 
-    return this->PrintBase::output_filename(m_config.filename_format.value, ".gcode", filename_base, &config);
+    return this->PrintBase::output_filename(format, ".gcode", filename_base, &config);
 }
 
 std::string Print::get_model_name() const

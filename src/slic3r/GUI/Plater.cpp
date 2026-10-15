@@ -10531,6 +10531,8 @@ struct Plater::priv
     // extension should contain the leading dot, i.e.: ".3mf"
     wxString get_project_filename(const wxString& extension = wxEmptyString) const;
     wxString get_export_gcode_filename(const wxString& extension = wxEmptyString, bool only_filename = false, bool export_all = false) const;
+    // Default G-code output path used by Export / Print / PrintStash: "<3mf project name>[_<plate>]_<filament type>.gcode".
+    std::string default_gcode_output_path();
     void set_project_filename(const wxString& filename);
 
     //BBS store bbs project name
@@ -16410,6 +16412,25 @@ wxString Plater::priv::get_project_name()
     return m_project_name;
 }
 
+std::string Plater::priv::default_gcode_output_path()
+{
+    // Directory (and the fallback name) as proposed by the regular "filename_format" machinery.
+    // May throw PlaceholderParserError, like the call it replaces.
+    const std::string proposed = background_process.output_filepath_for_project("");
+
+    const Print* print = background_process.fff_print();
+    if (print == nullptr || printer_technology != ptFFF)
+        return proposed;
+
+    // The root must match the 3mf project name (plus the plate suffix on multi-plate projects), the print
+    // time is dropped and the (first) filament type is kept: "Bracket_PETG.gcode".
+    const std::string root = into_u8(get_export_gcode_filename(wxEmptyString, true, false));
+    if (root.empty())
+        return proposed;
+    const std::string name = print->output_filename_with_format("{input_filename_base}_{filament_type[initial_tool]}.gcode", root);
+    return (fs::path(proposed).parent_path() / name).make_preferred().string();
+}
+
 //BBS
 void Plater::priv::set_project_name(const wxString& project_name)
 {
@@ -20397,7 +20418,7 @@ void Plater::export_gcode(bool prefer_removable)
         unsigned int state = this->p->update_restart_background_process(false, false);
         if (state & priv::UPDATE_BACKGROUND_PROCESS_INVALID)
             return;
-        default_output_file = this->p->background_process.output_filepath_for_project("");
+        default_output_file = this->p->default_gcode_output_path();
     } catch (const Slic3r::PlaceholderParserError &ex) {
         // Show the error with monospaced font.
         show_error(this, ex.what(), true);
@@ -21715,7 +21736,7 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
             unsigned int state = this->p->update_restart_background_process(false, false);
             if (state & priv::UPDATE_BACKGROUND_PROCESS_INVALID)
                 return;
-            default_output_file = this->p->background_process.output_filepath_for_project("");
+            default_output_file = this->p->default_gcode_output_path();
         } catch (const Slic3r::PlaceholderParserError& ex) {
             // Show the error with monospaced font.
             show_error(this, ex.what(), true);
@@ -21786,7 +21807,7 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn, bool us
         unsigned int state = this->p->update_restart_background_process(false, false);
         if (state & priv::UPDATE_BACKGROUND_PROCESS_INVALID)
             return;
-        default_output_file = this->p->background_process.output_filepath_for_project("");
+        default_output_file = this->p->default_gcode_output_path();
     } catch (const Slic3r::PlaceholderParserError& ex) {
         // Show the error with monospaced font.
         show_error(this, ex.what(), true);
@@ -21886,7 +21907,7 @@ void Plater::send_to_printstash()
         unsigned int state = p->update_restart_background_process(false, false);
         if (state & priv::UPDATE_BACKGROUND_PROCESS_INVALID)
             return;
-        default_output_file = p->background_process.output_filepath_for_project("");
+        default_output_file = p->default_gcode_output_path();
     } catch (const Slic3r::PlaceholderParserError& ex) {
         show_error(this, ex.what(), true);
         return;
