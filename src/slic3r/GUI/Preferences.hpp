@@ -125,7 +125,7 @@ public:
         wxString title, wxWindow *parent, wxString tooltip, int padding_left, std::string parama, std::vector<wxString> vlista, std::vector<wxString> vlistb);
     wxBoxSizer *create_item_switch(wxString title, wxWindow *parent, wxString tooltip, std::string param);
     wxWindow *  create_item_radiobox(wxString title, wxWindow *parent, wxString tooltip, int padding_left, int groupid, std::string param);
-#ifdef WIN32
+#if defined(WIN32) || (defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION))
     wxBoxSizer* create_item_link_association(wxWindow* parent, wxString url_prefix, wxString website_name);
 #endif // WIN32
 

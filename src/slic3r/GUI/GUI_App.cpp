@@ -7631,6 +7631,22 @@ bool GUI_App::check_url_association(std::wstring url_prefix, std::wstring& reg_b
     boost::filesystem::path binary_path(boost::filesystem::canonical(boost::dll::program_location()));
     std::wstring key_string = L"\"" + binary_path.wstring() + L"\" \"%1\"";
     return key_string == reg_bin;
+#elif defined(__linux__)
+    // Ask xdg-mime which .desktop file handles x-scheme-handler/<prefix>; ours are named Snapmaker_OrcaURLProtocol-<prefix>*.desktop.
+    const std::string prefix = into_u8(wxString(url_prefix));
+    const std::string cmd    = "xdg-mime query default x-scheme-handler/" + prefix + " 2>/dev/null";
+    std::string       handler;
+    if (FILE* pipe = popen(cmd.c_str(), "r")) {
+        char buf[512];
+        if (fgets(buf, sizeof(buf), pipe))
+            handler = buf;
+        pclose(pipe);
+    }
+    boost::trim(handler);
+    if (handler.empty())
+        return false;
+    reg_bin = L"\"" + wxString::FromUTF8(handler).ToStdWstring() + L"\"";
+    return boost::starts_with(handler, "Snapmaker_OrcaURLProtocol-" + prefix);
 #else
     return false;
 #endif // WIN32

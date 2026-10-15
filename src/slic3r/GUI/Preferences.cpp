@@ -969,7 +969,7 @@ wxWindow *PreferencesDialog ::create_item_radiobox(wxString title, wxWindow *par
     return item;
 }
 
-#ifdef WIN32
+#if defined(WIN32) || (defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION))
 wxBoxSizer* PreferencesDialog::create_item_link_association(wxWindow* parent, wxString url_prefix, wxString website_name)
 {
     wxString title = _L("Associate") + (boost::format(" %1%://") % url_prefix.c_str()).str();
@@ -1295,7 +1295,12 @@ wxWindow* PreferencesDialog::create_general_page()
     auto associate_url_prusaslicer = create_item_link_association(page, L"prusaslicer", "Printables.com");
     auto associate_url_bambustudio = create_item_link_association(page, L"bambustudio", "Makerworld.com");
     auto associate_url_cura        = create_item_link_association(page, L"cura", "Thingiverse.com");
+    auto associate_url_orcaslicer  = create_item_link_association(page, L"orcaslicer", "PrintStash");
 #endif // _WIN32
+#if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION)
+    auto title_associate_url = create_item_title(_L("Associate web links to Snapmaker Orca"), page, _L("Associate URLs to Snapmaker Orca"));
+    auto associate_url_orcaslicer = create_item_link_association(page, L"orcaslicer", "PrintStash");
+#endif // __linux__
 
     // auto title_modelmall = create_item_title(_L("Online Models"), page, _L("Online Models"));
     // auto item_backup = create_item_switch(_L("Backup switch"), page, _L("Backup switch"), "units");
@@ -1396,7 +1401,12 @@ wxWindow* PreferencesDialog::create_general_page()
     sizer_page->Add(associate_url_prusaslicer, 0, wxTOP, FromDIP(3));
     sizer_page->Add(associate_url_bambustudio, 0, wxTOP, FromDIP(3));
     sizer_page->Add(associate_url_cura, 0, wxTOP, FromDIP(3));
+    sizer_page->Add(associate_url_orcaslicer, 0, wxTOP, FromDIP(3));
 #endif // _WIN32
+#if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION)
+    sizer_page->Add(title_associate_url, 0, wxTOP | wxEXPAND, FromDIP(20));
+    sizer_page->Add(associate_url_orcaslicer, 0, wxTOP, FromDIP(3));
+#endif // __linux__
     // auto item_title_modelmall = sizer_page->Add(title_modelmall, 0, wxTOP | wxEXPAND, FromDIP(20));
     // auto item_item_modelmall = sizer_page->Add(item_modelmall, 0, wxTOP, FromDIP(3));
     // auto update_modelmall = [this, item_title_modelmall, item_item_modelmall] (wxEvent & e) {
