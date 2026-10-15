@@ -469,7 +469,7 @@ public:
         int logoSize = scaleX(140);
         int logoX    = scaleX(170);
         int logoY    = scaleY(80);
-        wxBitmap* logoBmp = bmpCache.load_svg("splash_app_icon", logoSize, logoSize);
+        wxBitmap* logoBmp = bmpCache.load_svg("splash_app_icon_extended", logoSize, logoSize);
         if (logoBmp != nullptr)
             memDc.DrawBitmap(*logoBmp, logoX, logoY, true);
 
@@ -584,7 +584,8 @@ private:
         void init()
         {
             title    = "Snapmaker Orca";
-            version  = wxString::Format("V%s %s", Snapmaker_VERSION, _L("Release"));
+            // "Extended" build: upstream (base) version plus the commit this build was made from.
+            version  = wxString::Format("V%s (base) + %s", Snapmaker_VERSION, GIT_COMMIT_HASH);
 
             titleFont   = Label::sysFont(20, false);
             versionFont = Label::Body_13;
