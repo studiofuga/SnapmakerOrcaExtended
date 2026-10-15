@@ -10531,7 +10531,7 @@ struct Plater::priv
     // extension should contain the leading dot, i.e.: ".3mf"
     wxString get_project_filename(const wxString& extension = wxEmptyString) const;
     wxString get_export_gcode_filename(const wxString& extension = wxEmptyString, bool only_filename = false, bool export_all = false) const;
-    // Default G-code output path used by Export / Print / PrintStash: "<3mf project name>[_<plate>]_<filament type>.gcode".
+    // Default G-code output path used by Export / Print / PrintStash: "<3mf project name>[_<plate>].gcode".
     std::string default_gcode_output_path();
     void set_project_filename(const wxString& filename);
 
@@ -16422,12 +16422,12 @@ std::string Plater::priv::default_gcode_output_path()
     if (print == nullptr || printer_technology != ptFFF)
         return proposed;
 
-    // The root must match the 3mf project name (plus the plate suffix on multi-plate projects), the print
-    // time is dropped and the (first) filament type is kept: "Bracket_PETG.gcode".
+    // The name must match the 3mf project name exactly (plus the plate suffix on multi-plate projects):
+    // no print time and no filament type, e.g. "Bracket.gcode".
     const std::string root = into_u8(get_export_gcode_filename(wxEmptyString, true, false));
     if (root.empty())
         return proposed;
-    const std::string name = print->output_filename_with_format("{input_filename_base}_{filament_type[initial_tool]}.gcode", root);
+    const std::string name = print->output_filename_with_format("{input_filename_base}.gcode", root);
     return (fs::path(proposed).parent_path() / name).make_preferred().string();
 }
 
@@ -21899,15 +21899,39 @@ void Plater::send_to_printstash()
     }
 
     PrintHostJob upload_job;
-    upload_job.printhost.reset(new PrintStash(settings));
 
-    fs::path default_output_file;
+    fs::path          default_output_file;
+    PrintStashRuntime runtime;
     try {
         // Make sure the background process is up to date, so that the output file name template gets the right values.
         unsigned int state = p->update_restart_background_process(false, false);
         if (state & priv::UPDATE_BACKGROUND_PROCESS_INVALID)
             return;
         default_output_file = p->default_gcode_output_path();
+
+        // Identity of the source model, as the PrintStash Python hook got it from SLIC3R_* variables.
+        const std::string project_name = into_u8(p->get_project_name());
+        const bool        saved        = !p->get_project_filename(".3mf").empty();
+        if (saved) {
+            runtime.project_name    = project_name;
+            runtime.source_filename = project_name + ".3mf";
+        } else if (!p->model.objects.empty()) {
+            // Unsaved project: fall back to the file the (first) object was loaded from, if any.
+            const ModelObject* mo = p->model.objects.front();
+            if (!mo->input_file.empty())
+                runtime.source_filename = fs::path(mo->input_file).filename().string();
+            else if (mo->name.size() > 4)
+                runtime.source_filename = mo->name;
+        }
+        runtime.plate_name = p->partplate_list.get_curr_plate()->get_plate_name();
+        if (const Print* print = p->background_process.fff_print()) {
+            for (const PrintObject* po : print->objects()) {
+                ++runtime.object_count;
+                runtime.instance_count += int(po->instances().size());
+                if (runtime.first_object_name.empty())
+                    runtime.first_object_name = po->model_object()->name;
+            }
+        }
     } catch (const Slic3r::PlaceholderParserError& ex) {
         show_error(this, ex.what(), true);
         return;
@@ -21915,6 +21939,7 @@ void Plater::send_to_printstash()
         show_error(this, ex.what(), false);
         return;
     }
+    upload_job.printhost.reset(new PrintStash(settings, std::move(runtime)));
     upload_job.upload_data.use_3mf     = false;
     upload_job.upload_data.upload_path = default_output_file.filename();
 

@@ -314,7 +314,42 @@ std::string submission_id(const fs::path &file, const json &context)
 
 } // namespace
 
-PrintStash::PrintStash(PrintStashSettings settings) : m_settings(std::move(settings)) {}
+PrintStash::PrintStash(PrintStashSettings settings, PrintStashRuntime runtime)
+    : m_settings(std::move(settings)), m_runtime(std::move(runtime))
+{}
+
+void PrintStash::apply_runtime(json &ctx, const PrintStashRuntime &rt)
+{
+    if (!ctx.contains("source") || !ctx["source"].is_object()) ctx["source"] = json::object();
+    json &src = ctx["source"];
+    json &fs_ = ctx["field_sources"];
+    if (!fs_.is_object()) fs_ = json::object();
+    auto set_str = [&](const char *key, const std::string &v) {
+        if (v.empty()) return;
+        src[key] = v;
+        fs_[std::string("source.") + key] = "slic3r_runtime";
+    };
+    if (!rt.source_filename.empty()) {
+        set_str("filename", rt.source_filename);
+        src["basename"] = fs::path(rt.source_filename).stem().string();
+        fs_["source.basename"] = "slic3r_runtime";
+    }
+    set_str("project_name", rt.project_name);
+    set_str("plate_name", rt.plate_name);
+    set_str("first_object_name", rt.first_object_name);
+    if (rt.object_count > 0) {
+        src["object_count"] = rt.object_count;
+        fs_["source.object_count"] = "slic3r_runtime";
+    }
+    if (rt.instance_count > 0) {
+        src["instance_count"] = rt.instance_count;
+        fs_["source.instance_count"] = "slic3r_runtime";
+    }
+    const bool has_name = src.contains("filename") && src["filename"].is_string();
+    const int  objects  = src.contains("object_count") && src["object_count"].is_number_integer() ? src["object_count"].get<int>() : 0;
+    if (objects == 1 && has_name) ctx["classification"] = "single_object";
+    else if (objects > 1) ctx["classification"] = "multi_object";
+}
 
 const char *PrintStash::get_name() const { return "PrintStash"; }
 
@@ -371,6 +406,9 @@ bool PrintStash::upload(PrintHostUpload upload_data, ProgressFn progress_fn, Err
     json context;
     try {
         context = extract_native_context(upload_data.source_path);
+        apply_runtime(context, m_runtime);
+        BOOST_LOG_TRIVIAL(info) << "PrintStash: native context source = " << context["source"].dump() << ", classification = "
+                                << context["classification"].dump();
     } catch (const std::exception &e) {
         BOOST_LOG_TRIVIAL(error) << "PrintStash: native metadata extraction failed: " << e.what();
         error_fn(wxString::FromUTF8(e.what()));

@@ -29,12 +29,25 @@ struct PrintStashSettings
     std::string base_url() const;
 };
 
+// Facts only the slicer knows at export time (the Python hook received them as SLIC3R_* environment
+// variables). They identify the source model the G-code was sliced from and take precedence over
+// whatever can be guessed from the G-code text.
+struct PrintStashRuntime
+{
+    std::string source_filename;    // e.g. "Bracket.3mf": the file the project was loaded from / saved as
+    std::string project_name;       // 3mf project name without extension
+    std::string plate_name;
+    std::string first_object_name;
+    int         object_count{0};
+    int         instance_count{0};
+};
+
 // Native port of tools/printstash_orca_push.py: logs into a PrintStash server with an API key and
 // pushes the sliced G-code together with the metadata extracted from the G-code itself.
 class PrintStash : public PrintHost
 {
 public:
-    explicit PrintStash(PrintStashSettings settings);
+    explicit PrintStash(PrintStashSettings settings, PrintStashRuntime runtime = {});
     ~PrintStash() override = default;
 
     const char *get_name() const override;
@@ -54,7 +67,11 @@ public:
 private:
     bool login(std::string &token, wxString &error) const;
 
+    // Overlays the runtime facts on a context extracted from the G-code.
+    static void apply_runtime(nlohmann::json &context, const PrintStashRuntime &runtime);
+
     PrintStashSettings m_settings;
+    PrintStashRuntime  m_runtime;
 };
 
 } // namespace Slic3r
