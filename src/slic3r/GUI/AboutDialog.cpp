@@ -5,6 +5,11 @@
 #include "libslic3r/Color.hpp"
 #include "GUI.hpp"
 #include "GUI_App.hpp"
+
+// Defined by CMake from "git log -1 --format=%h"; "0000000" when the source tree is not a git checkout.
+#ifndef GIT_COMMIT_HASH
+#define GIT_COMMIT_HASH "0000000"
+#endif
 #include "MainFrame.hpp"
 #include "format.hpp"
 #include "Widgets/Button.hpp"
@@ -242,8 +247,12 @@ AboutDialog::AboutDialog()
     // version
     {
         vesizer->Add(0, FromDIP(165), 1, wxEXPAND, FromDIP(5));
-        auto version_string = _L("Snapmaker Orca ") + " " + std::string(Snapmaker_VERSION);
+        auto version_string = _L("Snapmaker Orca ") + " " + std::string(Snapmaker_VERSION) + " (base)";
         wxStaticText* version = new wxStaticText(this, wxID_ANY, version_string.c_str(), wxDefaultPosition, wxDefaultSize);
+        wxStaticText* commit_text = new wxStaticText(this, wxID_ANY, wxString::FromUTF8(GIT_COMMIT_HASH), wxDefaultPosition, wxDefaultSize);
+        commit_text->SetFont(Label::Body_10);
+        commit_text->SetForegroundColour(wxColour("#C8C8C6"));
+        commit_text->SetBackgroundColour(wxColour("#4d4d4d"));
         wxStaticText* bs_version = new wxStaticText(this, wxID_ANY, wxString::Format("Based on Orca Slicer"), wxDefaultPosition, wxDefaultSize);
         bs_version->SetFont(Label::Body_12);
         wxFont version_font = GetFont();
@@ -260,7 +269,8 @@ AboutDialog::AboutDialog()
         bs_version->SetBackgroundColour(wxColour("#4d4d4d"));
 
 
-        vesizer->Add(version, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, FromDIP(5));
+        vesizer->Add(version, 0, wxLEFT | wxRIGHT | wxTOP | wxALIGN_CENTER_HORIZONTAL, FromDIP(5));
+        vesizer->Add(commit_text, 0, wxLEFT | wxRIGHT | wxALIGN_CENTER_HORIZONTAL, FromDIP(5));
         vesizer->Add(bs_version, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, FromDIP(5));
 // #if BBL_INTERNAL_TESTING
 //         wxString build_time = wxString::Format("Build Time: %s", std::string(SLIC3R_BUILD_TIME));

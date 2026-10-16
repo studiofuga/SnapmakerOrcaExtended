@@ -414,6 +414,7 @@ public:
 		// ORCA scale all fonts with monitor scale
         scale_font(m_constant_text.titleFont,       m_scale * 1.5f);
         scale_font(m_constant_text.versionFont,     m_scale * 1.5f);
+        scale_font(m_constant_text.commitFont,      m_scale * 1.5f);
         scale_font(m_constant_text.loadingFont,     m_scale * 1.5f);
 
         // this font will be used for the action string
@@ -478,17 +479,22 @@ public:
         memDc.SetTextForeground(wxColour(23, 23, 23));
         wxSize brandExt = memDc.GetTextExtent(m_constant_text.title);
 
-        // Version tag: "V" + current app version
+        // Version tag on two lines: "V<base version> (base)" and, smaller, the git commit of this build
         memDc.SetFont(m_constant_text.versionFont);
-        memDc.SetTextForeground(wxColour(143, 143, 143));
         wxSize versionExt = memDc.GetTextExtent(m_constant_text.version);
+        memDc.SetFont(m_constant_text.commitFont);
+        wxSize commitExt = memDc.GetTextExtent(m_constant_text.commit);
 
-        // Center brand + gap + tag as a group.
-        int gap    = scaleX(10);
-        int totalW = brandExt.GetWidth() + gap + versionExt.GetWidth();
-        int startX = (width - totalW) / 2;
-        int brandY = scaleY(241);
-        int tagY   = scaleY(251);
+        // Center brand + gap + (two-line tag) as a group.
+        int gap      = scaleX(10);
+        int tagW     = std::max(versionExt.GetWidth(), commitExt.GetWidth());
+        int totalW   = brandExt.GetWidth() + gap + tagW;
+        int startX   = (width - totalW) / 2;
+        int brandY   = scaleY(241);
+        int lineGap  = scaleY(1);
+        int stackH   = versionExt.GetHeight() + lineGap + commitExt.GetHeight();
+        int tagY     = brandY + (brandExt.GetHeight() - stackH) / 2;
+        int tagX     = startX + brandExt.GetWidth() + gap;
 
         memDc.SetFont(m_constant_text.titleFont);
         memDc.SetTextForeground(wxColour(23, 23, 23));
@@ -496,9 +502,11 @@ public:
 
         memDc.SetFont(m_constant_text.versionFont);
         memDc.SetTextForeground(wxColour(143, 143, 143));
-        memDc.DrawText(m_constant_text.version,
-                       startX + brandExt.GetWidth() + gap,
-                       tagY);
+        memDc.DrawText(m_constant_text.version, tagX, tagY);
+
+        memDc.SetFont(m_constant_text.commitFont);
+        memDc.SetTextForeground(wxColour(170, 170, 170));
+        memDc.DrawText(m_constant_text.commit, tagX, tagY + versionExt.GetHeight() + lineGap);
 
         // Dynamic text y position (for SetText)
         m_action_line_y_position = scaleY(384);
@@ -576,19 +584,23 @@ private:
     {
         wxString title;
         wxString version;
+        wxString commit;
 
         wxFont   titleFont;
         wxFont   versionFont;
+        wxFont   commitFont;
         wxFont   loadingFont;
 
         void init()
         {
             title    = "Snapmaker Orca";
             // "Extended" build: upstream (base) version plus the commit this build was made from.
-            version  = wxString::Format("V%s (base) + %s", Snapmaker_VERSION, GIT_COMMIT_HASH);
+            version  = wxString::Format("V%s (base)", Snapmaker_VERSION);
+            commit   = GIT_COMMIT_HASH;
 
             titleFont   = Label::sysFont(20, false);
             versionFont = Label::Body_13;
+            commitFont  = Label::Body_10;
             loadingFont = Label::Body_11;
         }
     }
