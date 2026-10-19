@@ -128,6 +128,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/filamentsync/FilamentScrollBar.hpp
     GUI/filamentsync/FilamentSyncAlgorithm.cpp
     GUI/filamentsync/FilamentSyncAlgorithm.hpp
+    GUI/filamentsync/MachineFilamentMatch.cpp
+    GUI/filamentsync/MachineFilamentMatch.hpp
     GUI/filamentsync/MachineFilamentPicker.cpp
     GUI/filamentsync/MachineFilamentPicker.hpp
     GUI/filamentsync/PlaterPreview.cpp

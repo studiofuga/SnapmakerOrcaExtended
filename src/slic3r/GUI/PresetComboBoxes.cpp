@@ -32,6 +32,7 @@
 #include "GUI.hpp"
 #include "GUI_App.hpp"
 #include "FilamentColorUtils.hpp"
+#include "filamentsync/MachineFilamentMatch.hpp"
 #include "NotificationManager.hpp"
 #include "FilamentColorDialog.hpp"
 #include "Plater.hpp"
@@ -219,6 +220,10 @@ const Preset* ResolveMachineFilamentPresetForSlot(const std::deque<Preset>& fila
                                                    const std::string& filamentType,
                                                    const std::string& machineNozzles)
 {
+    // A match chosen by hand for this exact machine filament (MachineFilamentMatchDialog) wins over everything else.
+    if (const Preset* manual = find_manual_machine_filament_preset(filaments, filamentName, filamentType))
+        return manual;
+
     const std::string vendor = ExtractMachineFilamentVendor(filamentName, filamentType);
     const std::string signature = MachineFilamentSignature(vendor, filamentType);
     if (AppConfig* app_config = wxGetApp().app_config; app_config && app_config->has("machine_filament_presets", signature)) {

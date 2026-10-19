@@ -202,6 +202,7 @@
 
 #include "filamentsync/SyncConfirmDialog.hpp"
 #include "filamentsync/SyncFilamentColorDialog.hpp"
+#include "filamentsync/MachineFilamentMatch.hpp"
 
 #include "sentry_wrapper/SentryWrapper.hpp"
 #include <chrono>
@@ -677,48 +678,16 @@ std::string extract_base_filament_name(const std::string& full_name)
     return base;
 }
 
-// Resolve a machine filament name to a matching local filament preset.
-// Filament presets follow the convention "BaseName @Model nozzle",
-// e.g. "Generic PA-CF @U1 0.4 nozzle".  Split by '@' to extract the
-// base name, trim, and compare exactly — so "Generic PA" does NOT
-// accidentally match "Generic PA-CF".
-Preset* resolve_filament_preset(PresetBundle* preset_bundle, 
+// Resolve a machine filament name to a matching local filament preset: first a match the user chose by hand
+// (and asked to remember), then a compatible preset, system or user, with the same name.
+// Filament presets follow the convention "BaseName @Model nozzle", e.g. "Generic PA-CF @U1 0.4 nozzle": the
+// suffix is ignored and the rest is compared exactly, so "Generic PA" does NOT match "Generic PA-CF".
+// Returns nullptr when nothing matches: the caller asks the user (MachineFilamentMatchDialog) rather than
+// silently falling back to a generic preset.
+const Preset* resolve_filament_preset(PresetBundle* preset_bundle,
     const std::string& filament_name, const std::string& filament_type)
 {
-    if (!preset_bundle || filament_name.empty())
-        return nullptr;
-
-    auto to_lower = [](std::string s) {
-        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-        return s;
-    };
-
-    for (auto& preset : preset_bundle->filaments) {
-        if (!preset.is_compatible || !preset.is_system)
-            continue;
-
-        std::string base = extract_base_filament_name(preset.name);
-        if (to_lower(base) == to_lower(filament_name)) {
-            return &preset;
-        }
-    }
-
-    const std::string generic_prefix = "Generic ";
-    std::string generic_base = generic_prefix + filament_type;
-    for (auto& preset : preset_bundle->filaments) {
-        if (!preset.is_compatible || !preset.is_system)
-            continue;
-
-        std::string base = extract_base_filament_name(preset.name);
-        std::string type = preset.config.opt_string("filament_type", static_cast<unsigned int>(0));
-
-        if ((to_lower(type) == to_lower(filament_type)) && 
-                (to_lower(base) == to_lower(generic_base))) {
-            return &preset;
-        }
-    }
-
-    return nullptr;
+    return match_machine_filament_preset(preset_bundle, filament_name, filament_type);
 }
 
 // Deterministic key identifying a machine-reported filament (by vendor+type only, so it still
@@ -9367,10 +9336,47 @@ void Sidebar::show_sync_filament_dialog()
         ConfigOptionStrings* mco = preset_bundle->project_config.option<ConfigOptionStrings>("filament_multi_colors");
         ConfigOptionInts*    cmo = preset_bundle->project_config.option<ConfigOptionInts>("filament_colour_mode");
 
+        // Machine filaments without a matching profile: let the user choose the profile by hand instead of
+        // silently using a generic one (the dialog preselects the generic profile of the type).
+        std::map<std::string, std::string> manual_choice; // manual key -> preset name
+        {
+            std::vector<MachineFilamentMatchDialog::Entry> unmatched;
+            std::set<std::string>                          seen;
+            for (size_t i = 0; i < effective_size; ++i) {
+                const FilamentData& fd = syncedData[i];
+                if (is_none_filament(fd) || fd.m_name.empty())
+                    continue;
+                if (resolve_filament_preset(preset_bundle, fd.m_name, fd.m_type))
+                    continue;
+                if (seen.insert(machine_filament_manual_key(fd.m_name, fd.m_type)).second)
+                    unmatched.push_back({fd.m_name, fd.m_type});
+            }
+            if (!unmatched.empty()) {
+                MachineFilamentMatchDialog match_dlg(this, preset_bundle, unmatched, false);
+                if (match_dlg.ShowModal() == wxID_OK) {
+                    for (size_t k = 0; k < unmatched.size(); ++k) {
+                        const std::string chosen = match_dlg.selected_preset(k);
+                        if (chosen.empty())
+                            continue;
+                        manual_choice[machine_filament_manual_key(unmatched[k].machine_name, unmatched[k].machine_type)] = chosen;
+                        if (match_dlg.remember_choices())
+                            remember_manual_machine_filament_preset(unmatched[k].machine_name, unmatched[k].machine_type, chosen);
+                    }
+                }
+            }
+        }
+
         for (size_t i = 0; i < effective_size; ++i) {
-            Preset* matched = resolve_filament_preset(preset_bundle, syncedData[i].m_name, syncedData[i].m_type);
-            if (matched) {
-                preset_bundle->set_filament_preset(i, matched->name);
+            std::string matched_name;
+            if (const Preset* matched = resolve_filament_preset(preset_bundle, syncedData[i].m_name, syncedData[i].m_type)) {
+                matched_name = matched->name;
+            } else {
+                auto it = manual_choice.find(machine_filament_manual_key(syncedData[i].m_name, syncedData[i].m_type));
+                if (it != manual_choice.end())
+                    matched_name = it->second;
+            }
+            if (!matched_name.empty()) {
+                preset_bundle->set_filament_preset(i, matched_name);
             }
 
             if (co && i < co->values.size()) {
@@ -15074,6 +15080,31 @@ void Plater::priv::on_select_unmatched_machine_filament(PlaterPresetComboBox* co
     if (machine_idx < 0 || static_cast<size_t>(machine_idx) >= machineList.size())
         return;
     const ConnectMachineInfo& machineInfo = machineList[machine_idx];
+
+    // First offer to match this filament by hand with an existing profile (the name may simply differ);
+    // creating a new profile is still available from the same box.
+    {
+        MachineFilamentMatchDialog match_dlg(wxGetApp().mainframe, preset_bundle,
+                                             {{machineInfo.filament_info, machineInfo.filament_type}}, true);
+        const int rc = match_dlg.ShowModal();
+        if (rc == wxID_OK) {
+            const std::string chosen = match_dlg.selected_preset(0);
+            if (!chosen.empty()) {
+                if (match_dlg.remember_choices())
+                    remember_manual_machine_filament_preset(machineInfo.filament_info, machineInfo.filament_type, chosen);
+                preset_bundle->set_filament_preset(idx, chosen);
+                wxGetApp().plater()->update_project_dirty_from_presets();
+                preset_bundle->export_selections(*wxGetApp().app_config);
+                sidebar->update_dynamic_filament_list();
+                sidebar->update_color_mix_panel();
+                wxGetApp().mainframe->update_side_preset_ui();
+                sidebar->update_all_preset_comboboxes();
+            }
+            return;
+        }
+        if (rc != MachineFilamentMatchDialog::ID_CREATE_PRESET)
+            return;
+    }
 
     // The machine builds filament_info as "<vendor> <type>[ <sub_type>]" (see SSWCP.cpp). Split
     // it back apart using the type we already know, so vendor/serial land in the right fields.
