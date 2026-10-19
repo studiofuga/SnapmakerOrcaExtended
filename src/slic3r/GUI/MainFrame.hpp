@@ -342,6 +342,9 @@ public:
 
     bool can_save() const;
     bool can_save_as() const;
+    // PrintStash: upload of the project (3mf); available once PrintStash is configured.
+    bool can_upload_printstash() const;
+    void update_printstash_state();
     //BBS
     bool can_upload() const;
     void save_project();

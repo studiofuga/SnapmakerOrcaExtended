@@ -21880,7 +21880,68 @@ bool Plater::edit_printstash_settings()
         return false;
     dlg.get_settings().save(*wxGetApp().app_config);
     wxGetApp().app_config->save();
+    // The "upload to PrintStash" buttons depend on the settings.
+    if (wxGetApp().mainframe != nullptr)
+        wxGetApp().mainframe->update_printstash_state();
     return true;
+}
+
+bool Plater::is_printstash_configured()
+{
+    return wxGetApp().app_config != nullptr && PrintStashSettings::load(*wxGetApp().app_config).valid();
+}
+
+void Plater::upload_project_to_printstash()
+{
+    if (p->model.objects.empty()) {
+        show_info(this, _L("The plate is empty: there is no project to upload."), _L("PrintStash"));
+        return;
+    }
+    if (!is_printstash_configured()) {
+        show_error(this, _L("PrintStash is not configured: host, username and API key are required."));
+        return;
+    }
+    const PrintStashSettings settings = PrintStashSettings::load(*wxGetApp().app_config);
+
+    // PrintStash identifies a project by its file name, which is also how the G-code of the project gets linked to it:
+    // a project that has never been saved has no name yet, so ask for one first.
+    if (get_project_filename(".3mf").empty()) {
+        if (save_project(true) != wxID_YES)
+            return;
+    }
+    const std::string project_name = into_u8(p->get_project_name());
+    const std::string file_name    = project_name + ".3mf";
+
+    // Export the project as it is right now to a private temporary file: the project (path, dirty state, backups)
+    // is left alone, and the file is deleted by the upload job when it is over.
+    boost::system::error_code ec;
+    const fs::path temp_dir = fs::temp_directory_path(ec) / fs::unique_path("." SLIC3R_APP_KEY ".printstash.%%%%-%%%%-%%%%");
+    fs::create_directories(temp_dir, ec);
+    if (ec) {
+        show_error(this, _L("Failed to create a temporary folder for the PrintStash upload."));
+        return;
+    }
+    const fs::path temp_file = temp_dir / file_name;
+
+    // No FullPathSources: the copy sent to a server must not carry the local paths of the source models.
+    const SaveStrategy strategy = SaveStrategy::Silence | SaveStrategy::SplitModel | SaveStrategy::ShareMesh;
+    if (export_3mf(temp_file, strategy) < 0) {
+        fs::remove_all(temp_dir, ec);
+        show_error(this, _L("Failed to export the project for the PrintStash upload."));
+        return;
+    }
+
+    PrintStashRuntime runtime;
+    runtime.project_3mf      = true;
+    runtime.project_name     = project_name;
+    runtime.source_filename  = file_name;
+
+    PrintHostJob upload_job;
+    upload_job.printhost.reset(new PrintStash(settings, std::move(runtime)));
+    upload_job.upload_data.use_3mf     = true;
+    upload_job.upload_data.source_path = temp_file;
+    upload_job.upload_data.upload_path = fs::path(file_name);
+    wxGetApp().printhost_job_queue().enqueue(std::move(upload_job));
 }
 
 void Plater::send_to_printstash()

@@ -534,6 +534,10 @@ public:
     void send_to_printstash();
     // Opens the PrintStash connection settings dialog. Returns true if the user confirmed it.
     bool edit_printstash_settings();
+    // PrintStash: true when host, username and API key have been configured.
+    static bool is_printstash_configured();
+    // PrintStash: upload the current project as a 3mf file (what "Save" would write, without touching the project itself).
+    void upload_project_to_printstash();
     int export_config_3mf(int plate_idx = -1, Export3mfProgressFn proFn = nullptr);
     //BBS jump to nonitor after print job finished
     void send_calibration_job_finished(wxCommandEvent &evt);

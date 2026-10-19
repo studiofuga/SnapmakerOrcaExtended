@@ -338,6 +338,8 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
     else
         init_menubar_as_editor();
 
+    update_printstash_state();
+
     // BBS
 #if 0
     // This is needed on Windows to fake the CTRL+# of the window menu when using the numpad
@@ -1544,6 +1546,17 @@ bool MainFrame::can_save() const
         m_plater->is_project_dirty() && !m_plater->using_exported_file() && !m_plater->only_gcode_mode();
 }
 
+bool MainFrame::can_upload_printstash() const
+{
+    return can_save_as() && !m_plater->model().objects.empty() && Plater::is_printstash_configured();
+}
+
+void MainFrame::update_printstash_state()
+{
+    if (m_topbar != nullptr)
+        m_topbar->UpdatePrintStashButton(Plater::is_printstash_configured());
+}
+
 bool MainFrame::can_save_as() const
 {
     return (m_plater != nullptr) &&
@@ -2651,6 +2664,10 @@ void MainFrame::init_menubar_as_editor()
             [this](){return m_plater != nullptr && can_save_as(); }, this);
 #endif
 
+
+        append_menu_item(fileMenu, wxID_ANY, _L("Upload Project to PrintStash"), _L("Upload the current project (3mf) to the PrintStash server"),
+            [this](wxCommandEvent&) { if (m_plater) m_plater->upload_project_to_printstash(); }, "", nullptr,
+            [this](){return m_plater != nullptr && can_upload_printstash(); }, this);
 
         fileMenu->AppendSeparator();
 

@@ -40,6 +40,10 @@ struct PrintStashRuntime
     std::string first_object_name;
     int         object_count{0};
     int         instance_count{0};
+
+    // The uploaded file is the 3mf project itself (not a sliced G-code). No metadata is extracted, and the
+    // source file is a temporary copy that the host deletes once the upload is over.
+    bool        project_3mf{false};
 };
 
 // Native port of tools/printstash_orca_push.py: logs into a PrintStash server with an API key and
@@ -66,6 +70,7 @@ public:
 
 private:
     bool login(std::string &token, wxString &error) const;
+    bool upload_project(const std::string &token, const PrintHostUpload &upload_data, ProgressFn progress_fn, ErrorFn error_fn) const;
 
     // Overlays the runtime facts on a context extracted from the G-code.
     static void apply_runtime(nlohmann::json &context, const PrintStashRuntime &runtime);

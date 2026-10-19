@@ -28,6 +28,7 @@ enum CUSTOM_ID
     ID_MODEL_STORE,
     ID_PUBLISH,
     ID_CALIB,
+    ID_PRINTSTASH,
     ID_TOOL_BAR = 3200,
     ID_AMS_NOTEBOOK,
 };
@@ -234,6 +235,14 @@ void BBLTopbar::Init(wxFrame* parent)
 
     this->AddSpacer(FromDIP(10));
 
+    // Upload the project (3mf) to a PrintStash server; enabled only once PrintStash is configured.
+    wxBitmap printstash_bitmap = create_scaled_bitmap("topbar_printstash", nullptr, TOPBAR_ICON_SIZE);
+    m_printstash_item = this->AddTool(ID_PRINTSTASH, "", printstash_bitmap, _L("Upload project to PrintStash"));
+    m_printstash_item->SetDisabledBitmap(create_scaled_bitmap("topbar_printstash_inactive", nullptr, TOPBAR_ICON_SIZE));
+    this->EnableTool(ID_PRINTSTASH, false);
+
+    this->AddSpacer(FromDIP(10));
+
     wxBitmap undo_bitmap = create_scaled_bitmap("topbar_undo", nullptr, TOPBAR_ICON_SIZE);
     m_undo_item = this->AddTool(wxID_UNDO, "", undo_bitmap);
     wxBitmap undo_inactive_bitmap = create_scaled_bitmap("topbar_undo_inactive", nullptr, TOPBAR_ICON_SIZE);
@@ -317,6 +326,7 @@ void BBLTopbar::Init(wxFrame* parent)
     this->Bind(wxEVT_LEFT_UP, &BBLTopbar::OnMouseLeftUp, this);
     this->Bind(wxEVT_AUITOOLBAR_TOOL_DROPDOWN, &BBLTopbar::OnOpenProject, this, wxID_OPEN);
     this->Bind(wxEVT_AUITOOLBAR_TOOL_DROPDOWN, &BBLTopbar::OnSaveProject, this, wxID_SAVE);
+    this->Bind(wxEVT_AUITOOLBAR_TOOL_DROPDOWN, &BBLTopbar::OnUploadPrintStash, this, ID_PRINTSTASH);
     this->Bind(wxEVT_AUITOOLBAR_TOOL_DROPDOWN, &BBLTopbar::OnRedo, this, wxID_REDO);
     this->Bind(wxEVT_AUITOOLBAR_TOOL_DROPDOWN, &BBLTopbar::OnUndo, this, wxID_UNDO);
     //this->Bind(wxEVT_AUITOOLBAR_TOOL_DROPDOWN, &BBLTopbar::OnModelStoreClicked, this, ID_MODEL_STORE);
@@ -348,6 +358,21 @@ void BBLTopbar::OnSaveProject(wxAuiToolBarEvent& event)
     MainFrame* main_frame = dynamic_cast<MainFrame*>(m_frame);
     Plater* plater = main_frame->plater();
     plater->save_project();
+}
+
+void BBLTopbar::OnUploadPrintStash(wxAuiToolBarEvent& event)
+{
+    MainFrame* main_frame = dynamic_cast<MainFrame*>(m_frame);
+    Plater* plater = main_frame->plater();
+    plater->upload_project_to_printstash();
+}
+
+void BBLTopbar::UpdatePrintStashButton(bool configured)
+{
+    this->EnableTool(ID_PRINTSTASH, configured);
+    this->SetToolShortHelp(ID_PRINTSTASH, configured ? _L("Upload project to PrintStash")
+                                                     : _L("Upload project to PrintStash (not configured: see Print > PrintStash settings...)"));
+    Refresh();
 }
 
 void BBLTopbar::OnUndo(wxAuiToolBarEvent& event)
@@ -483,6 +508,10 @@ void BBLTopbar::Rescale() {
 
     item = this->FindTool(wxID_SAVE);
     item->SetBitmap(create_scaled_bitmap("topbar_save", this, TOPBAR_ICON_SIZE));
+
+    item = this->FindTool(ID_PRINTSTASH);
+    item->SetBitmap(create_scaled_bitmap("topbar_printstash", this, TOPBAR_ICON_SIZE));
+    item->SetDisabledBitmap(create_scaled_bitmap("topbar_printstash_inactive", nullptr, TOPBAR_ICON_SIZE));
 
     item = this->FindTool(wxID_UNDO);
     item->SetBitmap(create_scaled_bitmap("topbar_undo", this, TOPBAR_ICON_SIZE));

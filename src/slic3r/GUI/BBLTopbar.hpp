@@ -33,6 +33,7 @@ public:
     void OnOpenProject(wxAuiToolBarEvent& event);
     void show_publish_button(bool show);
     void OnSaveProject(wxAuiToolBarEvent& event);
+    void OnUploadPrintStash(wxAuiToolBarEvent& event);
     void OnUndo(wxAuiToolBarEvent& event);
     void OnRedo(wxAuiToolBarEvent& event);
     void OnModelStoreClicked(wxAuiToolBarEvent& event);
@@ -48,6 +49,9 @@ public:
     void SetTitle(wxString title);
     void SetMaximizedSize();
     void SetWindowSize();
+
+    // Enables the "upload to PrintStash" button only when PrintStash has been configured.
+    void UpdatePrintStashButton(bool configured);
 
     void EnableUndoRedoItems();
     void DisableUndoRedoItems();
@@ -70,6 +74,7 @@ private:
     wxAuiToolBarItem* m_model_store_item;
     
     wxAuiToolBarItem *m_publish_item;
+    wxAuiToolBarItem* m_printstash_item;
     wxAuiToolBarItem* m_undo_item;
     wxAuiToolBarItem* m_redo_item;
     wxAuiToolBarItem* m_calib_item;

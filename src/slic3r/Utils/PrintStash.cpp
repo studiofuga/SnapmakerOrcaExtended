@@ -394,14 +394,60 @@ bool PrintStash::test(wxString &msg) const
     return login(token, msg);
 }
 
+bool PrintStash::upload_project(const std::string &token, const PrintHostUpload &upload_data, ProgressFn progress_fn, ErrorFn error_fn) const
+{
+    // Same ingest endpoint and form fields as the official OrcaSlicer hook (model_name, collection, tags, file).
+    const std::string url = m_settings.base_url() + "/api/v1/ingest/orca";
+    std::string       filename = upload_data.upload_path.filename().string();
+    if (filename.empty()) filename = upload_data.source_path.filename().string();
+    const std::string model_name = m_runtime.project_name.empty() ? fs::path(filename).stem().string() : m_runtime.project_name;
+
+    bool ok   = false;
+    auto http = Http::post(url);
+    http.header("Authorization", "Bearer " + token)
+        .header("User-Agent", "PrintStash-OrcaHook/1.0")
+        .timeout_connect(30)
+        .form_add("model_name", model_name);
+    if (!m_settings.collection.empty()) http.form_add("collection", m_settings.collection);
+    if (!m_settings.tags.empty()) http.form_add("tags", m_settings.tags);
+    http.form_add_file("file", upload_data.source_path, filename)
+        .on_complete([&](std::string body, unsigned status) {
+            BOOST_LOG_TRIVIAL(info) << "PrintStash: project upload OK [" << status << "] " << filename << " -> " << body;
+            ok = true;
+        })
+        .on_error([&](std::string body, std::string error, unsigned status) {
+            BOOST_LOG_TRIVIAL(error) << "PrintStash: project upload failed: " << error << ", HTTP " << status << ", body: " << body;
+            error_fn(format_error(body, error, status));
+        })
+        .on_progress([&](Http::Progress progress, bool &cancel) { progress_fn(std::move(progress), cancel); })
+        .perform_sync();
+    return ok;
+}
+
 bool PrintStash::upload(PrintHostUpload upload_data, ProgressFn progress_fn, ErrorFn error_fn, InfoFn info_fn) const
 {
+    // The project 3mf is exported to a temporary file only for this upload: remove it whatever the outcome.
+    struct TempFileGuard
+    {
+        fs::path path;
+        ~TempFileGuard()
+        {
+            if (path.empty()) return;
+            boost::system::error_code ec;
+            fs::remove(path, ec);
+            fs::remove(path.parent_path(), ec); // its private directory, only if empty
+        }
+    } temp_guard;
+    if (m_runtime.project_3mf) temp_guard.path = upload_data.source_path;
+
     std::string token;
     wxString    err;
     if (!login(token, err)) {
         error_fn(err);
         return false;
     }
+
+    if (m_runtime.project_3mf) return upload_project(token, upload_data, std::move(progress_fn), std::move(error_fn));
 
     json context;
     try {
