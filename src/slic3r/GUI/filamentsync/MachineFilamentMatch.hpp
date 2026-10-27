@@ -6,8 +6,8 @@
 
 #include <wx/dialog.h>
 
+class wxButton;
 class wxCheckBox;
-class wxChoice;
 
 namespace Slic3r {
 
@@ -79,9 +79,34 @@ public:
     bool remember_choices() const;
 
 private:
+    // The profiles of one entry, as the menu presents them: a short list of likely ones, then
+    // everything grouped by material and, where a material has too many, by vendor under it.
+    // A leaf carries the index into m_choice_names, which is what the menu item id is derived from.
+    struct MenuLeaf
+    {
+        wxString label;
+        int      name_index{0};
+    };
+    struct MenuGroup
+    {
+        wxString               label;
+        std::vector<MenuLeaf>  leaves;
+        std::vector<MenuGroup> subgroups; // one level deep at most
+    };
+    struct PresetMenu
+    {
+        std::vector<MenuLeaf>  suggested;
+        std::vector<MenuGroup> groups;
+    };
+
+    void show_preset_menu(size_t row);     // pops the grouped menu and records what was picked
+    void update_button_label(size_t row);
+
     std::vector<Entry>                 m_entries;
     std::vector<std::vector<std::string>> m_choice_names; // per entry: preset full names, index 0 = none
-    std::vector<wxChoice*>             m_choices;
+    std::vector<PresetMenu>            m_menus;    // per entry, built once
+    std::vector<wxButton*>             m_buttons;  // per entry: opens the menu, shows the choice
+    std::vector<int>                   m_selected; // per entry: index into m_choice_names
     wxCheckBox*                        m_remember{nullptr};
 };
 
