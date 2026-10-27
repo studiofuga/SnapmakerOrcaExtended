@@ -119,6 +119,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/FlowTypeHelper.hpp
     GUI/HighFlowCompat.cpp
     GUI/HighFlowCompat.hpp
+    GUI/filamentsync/FilamentAssignment.cpp
+    GUI/filamentsync/FilamentAssignment.hpp
     GUI/filamentsync/FilamentColorMapBox.cpp
     GUI/filamentsync/FilamentColorMapBox.hpp
     GUI/filamentsync/FilamentColorMapBoxGroup.cpp

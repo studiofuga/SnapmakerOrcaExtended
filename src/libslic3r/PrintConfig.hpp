@@ -1403,6 +1403,7 @@ PRINT_CONFIG_CLASS_DERIVED_DEFINE(
     ((ConfigOptionStrings,            filament_colour))
     ((ConfigOptionStrings,            filament_multi_colors))
     ((ConfigOptionInts,               filament_colour_mode))
+    ((ConfigOptionStrings,            filament_design_colour))
     ((ConfigOptionBools,              activate_air_filtration))
     ((ConfigOptionInts,               during_print_exhaust_fan_speed))
     ((ConfigOptionInts,               complete_print_exhaust_fan_speed))

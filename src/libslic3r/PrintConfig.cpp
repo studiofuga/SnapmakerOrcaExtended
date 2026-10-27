@@ -2069,6 +2069,18 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionStrings{ "#F2754E" });
 
+    // Snapmaker: the palette the project was designed with, one entry per filament slot.
+    // Assigning a physical filament (Spoolman, or the printer) overwrites "filament_colour" with
+    // the color actually loaded, so without this snapshot the original color -- the reference the
+    // color matching compares against -- would be lost after the first assignment.
+    def = this->add("filament_design_colour", coStrings);
+    def->label = L("Design color");
+    def->tooltip = L("The color the project was designed with, per filament slot. Kept as the "
+                     "reference for matching physical filaments to the project; not used for printing.");
+    def->mode = comAdvanced;
+    def->cli = ConfigOptionDef::nocli;
+    def->set_default_value(new ConfigOptionStrings{ "" });
+
     def = this->add("filament_multi_colors", coStrings);
     def->label = L("Filament multi colors");
     def->tooltip = L("Serialized filament color sequence. Multiple colors are separated by '|'.");

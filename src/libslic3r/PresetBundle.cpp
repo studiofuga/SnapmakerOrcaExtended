@@ -138,6 +138,19 @@ void EnsureFilamentColorFieldsAligned(DynamicPrintConfig &config)
         if (shouldRefreshMulti)
             multiColors->values[i] = filamentColor->values[i];
     }
+
+    // Snapmaker: the design palette of the project.  A slot keeps the color it was designed with,
+    // captured the first time the slot is seen; assigning a physical filament later overwrites
+    // "filament_colour" only.  std::vector::resize is used on purpose: ConfigOption::resize would
+    // extend by duplicating the first value, and an empty entry is what marks a slot as not
+    // captured yet.
+    ConfigOptionStrings *designColors = config.option<ConfigOptionStrings>("filament_design_colour", true);
+    designColors->values.resize(targetCount);
+    for (size_t i = 0; i < targetCount; ++i)
+    {
+        if (designColors->values[i].empty())
+            designColors->values[i] = filamentColor->values[i];
+    }
 }
 
 void ApplyFilamentColors(DynamicPrintConfig &config, const std::vector<FilamentColor>& filamentColors)
@@ -187,6 +200,7 @@ void EraseFilamentColorFields(DynamicPrintConfig &config, size_t index)
 {
     EraseStringOptionAt(config, "filament_multi_colors", index);
     EraseIntOptionAt(config, "filament_colour_mode", index);
+    EraseStringOptionAt(config, "filament_design_colour", index);
     EnsureFilamentColorFieldsAligned(config);
 }
 
@@ -205,6 +219,7 @@ static std::vector<std::string> s_project_options {
     "filament_colour",
     "filament_multi_colors",
     "filament_colour_mode",
+    "filament_design_colour",
     "wipe_tower_x",
     "wipe_tower_y",
     "wipe_tower_rotation_angle",

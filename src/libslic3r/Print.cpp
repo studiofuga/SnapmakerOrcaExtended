@@ -566,6 +566,7 @@ bool Print::invalidate_state_by_config_options(const ConfigOptionResolver & /* n
         "filament_colour",
         "filament_multi_colors",
         "filament_colour_mode",
+        "filament_design_colour",
         "default_filament_colour",
         "filament_diameter",
         "filament_density",

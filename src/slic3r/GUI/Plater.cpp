@@ -9482,27 +9482,86 @@ void Sidebar::show_spoolman_dialog()
     while (max_slots > 1 && preset_bundle->mixed_filaments.total_filaments(max_slots) >= MAXIMUM_FILAMENT_NUMBER)
         --max_slots;
 
-    SpoolmanSpoolDialog dlg(this, spools, max_slots, settings.hide_empty);
-    const int           answer = dlg.ShowModal();
-    // The filter is part of the user's habits: remember it whatever the answer was.
-    if (dlg.hide_empty() != settings.hide_empty) {
+    // The slots of the project, each with the color it was designed with: that color, not the one
+    // currently loaded, is what a physical filament has to be matched against.
+    std::vector<SpoolmanAssignDialog::Slot> slots;
+    {
+        std::vector<FilamentData> design;
+        build_design_filament_list(preset_bundle, design);
+        const auto *design_colors = preset_bundle->project_config.option<ConfigOptionStrings>("filament_design_colour");
+        slots.reserve(design.size());
+        for (size_t i = 0; i < design.size(); ++i) {
+            SpoolmanAssignDialog::Slot slot;
+            slot.name          = design[i].m_name;
+            slot.type          = design[i].m_type;
+            slot.current_color = into_u8(getMainColor(design[i].m_color).GetAsString(wxC2S_HTML_SYNTAX));
+            slot.design_color  = (design_colors != nullptr && i < design_colors->values.size() &&
+                                 !design_colors->values[i].empty()) ?
+                                     design_colors->values[i] :
+                                     slot.current_color;
+            slots.push_back(std::move(slot));
+        }
+    }
+
+    // What to do, as (slot index, spool) pairs.  Two ways in, both ending here: ticking spools
+    // rebuilds the filament list of the project, which is what setting a project up calls for;
+    // matching assigns a spool to each slot the project already has, which keeps the slot count
+    // and therefore the filament every part is assigned to.
+    std::vector<std::pair<size_t, SpoolmanSpool>> plan;
+    bool                                          replaced_list = false;
+
+    // The filter is part of the user's habits: remember it whatever the answer was, and carry it
+    // from one dialog to the other.
+    bool       hide_empty_pref = settings.hide_empty;
+    const auto remember_filter = [&settings, &hide_empty_pref](bool value) {
+        hide_empty_pref = value;
+        if (value == settings.hide_empty)
+            return;
         SpoolmanSettings updated = settings;
-        updated.hide_empty       = dlg.hide_empty();
+        updated.hide_empty       = value;
         updated.save(*wxGetApp().app_config);
         wxGetApp().app_config->save();
-    }
-    if (answer != wxID_OK)
-        return;
+    };
 
-    const std::vector<SpoolmanSpool> selected = dlg.selected_spools();
-    if (selected.empty())
-        return;
-    const size_t effective_size = selected.size();
+    SpoolmanSpoolDialog dlg(this, spools, max_slots, hide_empty_pref);
+    const int           answer = dlg.ShowModal();
+    remember_filter(dlg.hide_empty());
 
-    // One filament slot per selected spool.
-    if (effective_size != p->combos_filament.size()) {
-        const wxColour new_col = Plater::get_next_color_for_filament();
-        preset_bundle->set_num_filaments(effective_size, into_u8(new_col.GetAsString(wxC2S_HTML_SYNTAX)));
+    if (answer == wxID_OK) {
+        const std::vector<SpoolmanSpool> selected = dlg.selected_spools();
+        if (selected.empty())
+            return;
+
+        // One filament slot per selected spool.
+        if (selected.size() != p->combos_filament.size()) {
+            const wxColour new_col = Plater::get_next_color_for_filament();
+            preset_bundle->set_num_filaments(selected.size(), into_u8(new_col.GetAsString(wxC2S_HTML_SYNTAX)));
+        }
+        for (size_t i = 0; i < selected.size(); ++i)
+            plan.emplace_back(i, selected[i]);
+        replaced_list = true;
+    } else if (answer == SpoolmanSpoolDialog::ID_MATCH_CURRENT) {
+        if (slots.empty()) {
+            show_info(this, _L("The project has no filament slot to assign a spool to."), _L("Spoolman"));
+            return;
+        }
+
+        SpoolmanAssignDialog assign_dlg(this, spools, slots, hide_empty_pref);
+        const int            assign_answer = assign_dlg.ShowModal();
+        remember_filter(assign_dlg.hide_empty());
+        if (assign_answer != wxID_OK)
+            return;
+
+        const std::vector<SpoolmanSpool> &sorted     = assign_dlg.spools();
+        const std::vector<int>           &assignment = assign_dlg.assignment();
+        for (size_t i = 0; i < assignment.size(); ++i) {
+            if (assignment[i] >= 0 && size_t(assignment[i]) < sorted.size())
+                plan.emplace_back(i, sorted[size_t(assignment[i])]);
+        }
+        if (plan.empty())
+            return; // accepted with every slot left unchanged
+    } else {
+        return;
     }
 
     // Spools without a matching filament profile: let the user choose one instead of silently falling
@@ -9511,9 +9570,9 @@ void Sidebar::show_spoolman_dialog()
     {
         std::vector<MachineFilamentMatchDialog::Entry> unmatched;
         std::set<std::string>                          seen;
-        for (size_t i = 0; i < effective_size; ++i) {
-            const std::string name = selected[i].display_name();
-            const std::string type = selected[i].material;
+        for (const std::pair<size_t, SpoolmanSpool>& entry : plan) {
+            const std::string name = entry.second.display_name();
+            const std::string type = entry.second.material;
             if (name.empty() || resolve_filament_preset(preset_bundle, name, type))
                 continue;
             if (seen.insert(machine_filament_manual_key(name, type)).second)
@@ -9540,8 +9599,9 @@ void Sidebar::show_spoolman_dialog()
     ConfigOptionStrings* mco = preset_bundle->project_config.option<ConfigOptionStrings>("filament_multi_colors");
     ConfigOptionInts*    cmo = preset_bundle->project_config.option<ConfigOptionInts>("filament_colour_mode");
 
-    for (size_t i = 0; i < effective_size; ++i) {
-        const SpoolmanSpool& spool = selected[i];
+    for (const std::pair<size_t, SpoolmanSpool>& entry : plan) {
+        const size_t         i     = entry.first;
+        const SpoolmanSpool& spool = entry.second;
 
         std::string matched_name;
         if (const Preset* matched = resolve_filament_preset(preset_bundle, spool.display_name(), spool.material)) {
@@ -9566,7 +9626,8 @@ void Sidebar::show_spoolman_dialog()
             cmo->values[i] = FilamentColorModeToConfig(color.NormalizedMode());
     }
 
-    wxGetApp().plater()->on_filaments_change(effective_size);
+    const size_t filament_count = preset_bundle->filament_presets.size();
+    wxGetApp().plater()->on_filaments_change(filament_count);
     wxGetApp().get_tab(Preset::TYPE_PRINT)->update();
     preset_bundle->export_selections(*wxGetApp().app_config);
 
@@ -9574,13 +9635,14 @@ void Sidebar::show_spoolman_dialog()
         if (combo != nullptr)
             combo->update();
 
-    for (size_t i = 0; i < effective_size; ++i)
+    for (size_t i = 0; i < filament_count; ++i)
         auto_calc_flushing_volumes(i);
 
     wxGetApp().plater()->get_notification_manager()->push_notification(
         NotificationType::CustomNotification,
         NotificationManager::NotificationLevel::RegularNotificationLevel,
-        _u8L("The filaments of the project have been assigned from the Spoolman inventory."));
+        replaced_list ? _u8L("The filament list of the project has been rebuilt from the Spoolman inventory.") :
+                        _u8L("The spools of the Spoolman inventory have been assigned to the filament slots."));
 }
 
 void Sidebar::show_SEMM_buttons(bool bshow)
