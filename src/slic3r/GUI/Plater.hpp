@@ -182,6 +182,8 @@ public:
     std::map<int, DynamicPrintConfig> build_filament_ams_list(MachineObject* obj);
     void sync_ams_list();
     void show_sync_filament_dialog();
+    // Spoolman: pick spools of the inventory and assign them to the filament slots of the project.
+    void show_spoolman_dialog();
     // Orca
     void show_SEMM_buttons(bool bshow);
     void update_dynamic_filament_list();
@@ -538,6 +540,10 @@ public:
     static bool is_printstash_configured();
     // PrintStash: upload the current project as a 3mf file (what "Save" would write, without touching the project itself).
     void upload_project_to_printstash();
+    // Opens the Spoolman connection settings dialog. Returns true if the user confirmed it.
+    bool edit_spoolman_settings();
+    // Spoolman: true when a host has been configured.
+    static bool is_spoolman_configured();
     int export_config_3mf(int plate_idx = -1, Export3mfProgressFn proFn = nullptr);
     //BBS jump to nonitor after print job finished
     void send_calibration_job_finished(wxCommandEvent &evt);

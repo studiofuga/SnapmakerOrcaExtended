@@ -1941,10 +1941,19 @@ wxBoxSizer* MainFrame::create_side_tools()
                 wxGetApp().plater()->edit_printstash_settings();
             });
 
+            // Spoolman: connection settings of the filament inventory
+            SideButton* spoolman_cfg_btn = new SideButton(p, _L("Spoolman settings..."), "");
+            spoolman_cfg_btn->SetCornerRadius(0);
+            spoolman_cfg_btn->Bind(wxEVT_BUTTON, [this, p](wxCommandEvent&) {
+                p->Dismiss();
+                wxGetApp().plater()->edit_spoolman_settings();
+            });
+
             p->append_button(send_gcode_btn);
             p->append_button(export_gcode_btn);
             p->append_button(printstash_btn);
             p->append_button(printstash_cfg_btn);
+            p->append_button(spoolman_cfg_btn);
         } else {
             SideButton* print_plate_btn = new SideButton(p, _L("Print"), "");
             print_plate_btn->SetCornerRadius(0);
@@ -2046,9 +2055,18 @@ wxBoxSizer* MainFrame::create_side_tools()
                 wxGetApp().plater()->edit_printstash_settings();
             });
 
+            // Spoolman: connection settings of the filament inventory
+            SideButton* spoolman_cfg_btn = new SideButton(p, _L("Spoolman settings..."), "");
+            spoolman_cfg_btn->SetCornerRadius(0);
+            spoolman_cfg_btn->Bind(wxEVT_BUTTON, [this, p](wxCommandEvent&) {
+                p->Dismiss();
+                wxGetApp().plater()->edit_spoolman_settings();
+            });
+
             p->append_button(export_gcode_btn);
             p->append_button(printstash_btn);
             p->append_button(printstash_cfg_btn);
+            p->append_button(spoolman_cfg_btn);
         }
 
         p->Popup(m_print_btn);

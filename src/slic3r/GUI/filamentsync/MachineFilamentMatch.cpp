@@ -119,15 +119,18 @@ const Preset* match_machine_filament_preset(const PresetBundle*      bundle,
 MachineFilamentMatchDialog::MachineFilamentMatchDialog(wxWindow*          parent,
                                                        const PresetBundle* bundle,
                                                        std::vector<Entry>  entries,
-                                                       bool                allow_create)
+                                                       bool                allow_create,
+                                                       const wxString&     intro_text)
     : wxDialog(parent, wxID_ANY, _L("Match filaments"), wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE)
     , m_entries(std::move(entries))
 {
     auto* top = new wxBoxSizer(wxVERTICAL);
 
     auto* intro = new wxStaticText(this, wxID_ANY,
-                                   _L("No filament profile matches the following filaments of the printer. "
-                                      "Choose the profile to use for each one."));
+                                   intro_text.IsEmpty() ?
+                                       _L("No filament profile matches the following filaments of the printer. "
+                                          "Choose the profile to use for each one.") :
+                                       intro_text);
     intro->Wrap(FromDIP(460));
     top->Add(intro, 0, wxALL, FromDIP(12));
 

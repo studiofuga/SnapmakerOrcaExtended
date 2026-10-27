@@ -192,6 +192,8 @@
 #include "PrintHostDialogs.hpp"
 #include "PrintStashDialog.hpp"
 #include "slic3r/Utils/PrintStash.hpp"
+#include "SpoolmanDialog.hpp"
+#include "slic3r/Utils/Spoolman.hpp"
 #include "PlateSettingsDialog.hpp"
 #include "DailyTips.hpp"
 #include "CreatePresetsDialog.hpp"
@@ -1222,6 +1224,7 @@ struct Sidebar::priv
     ScalableButton *  m_bpButton_ams_filament;
     ScalableButton *  m_bpButton_set_filament;
     ScalableButton *  m_bpButton_sync_filament = nullptr;
+    ScalableButton *  m_bpButton_spoolman = nullptr;
     int                         m_menu_filament_id = -1;
     wxPanel* m_panel_filament_content;
     wxScrolledWindow* m_scrolledWindow_filament_content;
@@ -3136,6 +3139,14 @@ Sidebar::Sidebar(Plater *parent)
     });
     p->m_bpButton_sync_filament = sync_filament_btn;
 
+    // Spoolman: assign spools of the Spoolman inventory to the filament slots of the project
+    ScalableButton* spoolman_btn = new ScalableButton(p->m_panel_physical_filaments_title, wxID_ANY, "spool");
+    spoolman_btn->SetToolTip(_L("Assign filaments from Spoolman"));
+    spoolman_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent& e) {
+        show_spoolman_dialog();
+    });
+    p->m_bpButton_spoolman = spoolman_btn;
+
     // Delete filament button — delegates to delete_filament for consistent remap behavior
     ScalableButton* del_btn = new ScalableButton(p->m_panel_physical_filaments_title, wxID_ANY, "delete_filament");
     del_btn->SetToolTip(_L("Remove last filament"));
@@ -3168,6 +3179,7 @@ Sidebar::Sidebar(Plater *parent)
     p->m_bpButton_add_filament = add_btn;
 
     h_physical_title->Add(sync_filament_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
+    h_physical_title->Add(spoolman_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(10));
     h_physical_title->Add(del_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
     h_physical_title->Add(add_btn, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(8));
     auto* white_right_f = new wxPanel(p->m_panel_physical_filaments_title, wxID_ANY, wxDefaultPosition, wxSize(FromDIP(SidebarProps::ContentMargin()), -1));
@@ -9423,6 +9435,152 @@ void Sidebar::show_sync_filament_dialog()
             NotificationManager::NotificationLevel::RegularNotificationLevel,
             _u8L("Filament types and colors have been successfully synced from the printer."));
     }
+}
+
+// Spoolman: pick spools of the inventory and assign them to the filament slots of the project. Same
+// end state as the filament sync from the printer (one slot per selected spool, profile matched by
+// name with MachineFilamentMatch, color taken from the physical filament), but the list of filaments
+// comes from the Spoolman server instead of the machine.
+void Sidebar::show_spoolman_dialog()
+{
+    if (!wxGetApp().plater() || wxGetApp().app_config == nullptr)
+        return;
+
+    // First run: this button is the natural place to configure the server from.
+    if (!Plater::is_spoolman_configured()) {
+        if (!wxGetApp().plater()->edit_spoolman_settings() || !Plater::is_spoolman_configured())
+            return;
+    }
+
+    PresetBundle* preset_bundle = wxGetApp().preset_bundle;
+    if (!preset_bundle)
+        return;
+
+    const SpoolmanSettings settings = SpoolmanSettings::load(*wxGetApp().app_config);
+
+    std::vector<SpoolmanSpool> spools;
+    {
+        wxString     error;
+        bool         ok;
+        {
+            wxBusyCursor wait;
+            ok = Spoolman(settings).get_spools(spools, error);
+        }
+        if (!ok) {
+            show_error(this, wxString::Format(_L("Could not read the spools from Spoolman.\n%s"), error));
+            return;
+        }
+    }
+    if (spools.empty()) {
+        show_info(this, _L("The Spoolman inventory has no spool to assign."), _L("Spoolman"));
+        return;
+    }
+
+    // Upper bound of the selection: the hard limit on filament slots, lowered by what the mixed
+    // filaments of the project already take (same rule as the "add filament" button).
+    size_t max_slots = MAXIMUM_EXTRUDER_NUMBER;
+    while (max_slots > 1 && preset_bundle->mixed_filaments.total_filaments(max_slots) >= MAXIMUM_FILAMENT_NUMBER)
+        --max_slots;
+
+    SpoolmanSpoolDialog dlg(this, spools, max_slots, settings.hide_empty);
+    const int           answer = dlg.ShowModal();
+    // The filter is part of the user's habits: remember it whatever the answer was.
+    if (dlg.hide_empty() != settings.hide_empty) {
+        SpoolmanSettings updated = settings;
+        updated.hide_empty       = dlg.hide_empty();
+        updated.save(*wxGetApp().app_config);
+        wxGetApp().app_config->save();
+    }
+    if (answer != wxID_OK)
+        return;
+
+    const std::vector<SpoolmanSpool> selected = dlg.selected_spools();
+    if (selected.empty())
+        return;
+    const size_t effective_size = selected.size();
+
+    // One filament slot per selected spool.
+    if (effective_size != p->combos_filament.size()) {
+        const wxColour new_col = Plater::get_next_color_for_filament();
+        preset_bundle->set_num_filaments(effective_size, into_u8(new_col.GetAsString(wxC2S_HTML_SYNTAX)));
+    }
+
+    // Spools without a matching filament profile: let the user choose one instead of silently falling
+    // back to a generic profile. A remembered choice is reused by the next assignment and by the combo.
+    std::map<std::string, std::string> manual_choice; // manual key -> preset name
+    {
+        std::vector<MachineFilamentMatchDialog::Entry> unmatched;
+        std::set<std::string>                          seen;
+        for (size_t i = 0; i < effective_size; ++i) {
+            const std::string name = selected[i].display_name();
+            const std::string type = selected[i].material;
+            if (name.empty() || resolve_filament_preset(preset_bundle, name, type))
+                continue;
+            if (seen.insert(machine_filament_manual_key(name, type)).second)
+                unmatched.push_back({name, type});
+        }
+        if (!unmatched.empty()) {
+            MachineFilamentMatchDialog match_dlg(this, preset_bundle, unmatched, false,
+                                                 _L("No filament profile matches the following spools of the Spoolman "
+                                                    "inventory. Choose the profile to use for each one."));
+            if (match_dlg.ShowModal() == wxID_OK) {
+                for (size_t k = 0; k < unmatched.size(); ++k) {
+                    const std::string chosen = match_dlg.selected_preset(k);
+                    if (chosen.empty())
+                        continue;
+                    manual_choice[machine_filament_manual_key(unmatched[k].machine_name, unmatched[k].machine_type)] = chosen;
+                    if (match_dlg.remember_choices())
+                        remember_manual_machine_filament_preset(unmatched[k].machine_name, unmatched[k].machine_type, chosen);
+                }
+            }
+        }
+    }
+
+    ConfigOptionStrings* co  = preset_bundle->project_config.option<ConfigOptionStrings>("filament_colour");
+    ConfigOptionStrings* mco = preset_bundle->project_config.option<ConfigOptionStrings>("filament_multi_colors");
+    ConfigOptionInts*    cmo = preset_bundle->project_config.option<ConfigOptionInts>("filament_colour_mode");
+
+    for (size_t i = 0; i < effective_size; ++i) {
+        const SpoolmanSpool& spool = selected[i];
+
+        std::string matched_name;
+        if (const Preset* matched = resolve_filament_preset(preset_bundle, spool.display_name(), spool.material)) {
+            matched_name = matched->name;
+        } else {
+            const auto it = manual_choice.find(machine_filament_manual_key(spool.display_name(), spool.material));
+            if (it != manual_choice.end())
+                matched_name = it->second;
+        }
+        if (!matched_name.empty())
+            preset_bundle->set_filament_preset(i, matched_name);
+
+        // The color of the spool wins over the one of the profile: it is the filament actually loaded.
+        if (spool.colors.empty())
+            continue;
+        const FilamentColor color = FilamentColor::FromColors(spool.colors, FilamentColorMode::Segment);
+        if (co != nullptr && i < co->values.size())
+            co->values[i] = into_u8(getMainColor(color).GetAsString(wxC2S_HTML_SYNTAX));
+        if (mco != nullptr && i < mco->values.size())
+            mco->values[i] = color.ToMultiColorsString();
+        if (cmo != nullptr && i < cmo->values.size())
+            cmo->values[i] = FilamentColorModeToConfig(color.NormalizedMode());
+    }
+
+    wxGetApp().plater()->on_filaments_change(effective_size);
+    wxGetApp().get_tab(Preset::TYPE_PRINT)->update();
+    preset_bundle->export_selections(*wxGetApp().app_config);
+
+    for (auto* combo : p->combos_filament)
+        if (combo != nullptr)
+            combo->update();
+
+    for (size_t i = 0; i < effective_size; ++i)
+        auto_calc_flushing_volumes(i);
+
+    wxGetApp().plater()->get_notification_manager()->push_notification(
+        NotificationType::CustomNotification,
+        NotificationManager::NotificationLevel::RegularNotificationLevel,
+        _u8L("The filaments of the project have been assigned from the Spoolman inventory."));
 }
 
 void Sidebar::show_SEMM_buttons(bool bshow)
@@ -21920,6 +22078,21 @@ bool Plater::edit_printstash_settings()
 bool Plater::is_printstash_configured()
 {
     return wxGetApp().app_config != nullptr && PrintStashSettings::load(*wxGetApp().app_config).valid();
+}
+
+bool Plater::edit_spoolman_settings()
+{
+    SpoolmanDialog dlg(this, SpoolmanSettings::load(*wxGetApp().app_config));
+    if (dlg.ShowModal() != wxID_OK)
+        return false;
+    dlg.get_settings().save(*wxGetApp().app_config);
+    wxGetApp().app_config->save();
+    return true;
+}
+
+bool Plater::is_spoolman_configured()
+{
+    return wxGetApp().app_config != nullptr && SpoolmanSettings::load(*wxGetApp().app_config).valid();
 }
 
 void Plater::upload_project_to_printstash()

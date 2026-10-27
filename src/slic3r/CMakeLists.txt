@@ -392,6 +392,8 @@ set(SLIC3R_GUI_SOURCES
     GUI/PrintHostDialogs.hpp
     GUI/PrintStashDialog.cpp
     GUI/PrintStashDialog.hpp
+    GUI/SpoolmanDialog.cpp
+    GUI/SpoolmanDialog.hpp
     GUI/PrintOptionsDialog.cpp
     GUI/PrintOptionsDialog.hpp
     GUI/PrivacyUpdateDialog.cpp
@@ -637,6 +639,8 @@ set(SLIC3R_GUI_SOURCES
     Utils/PrintHost.hpp
     Utils/PrintStash.cpp
     Utils/PrintStash.hpp
+    Utils/Spoolman.cpp
+    Utils/Spoolman.hpp
     Utils/Process.cpp
     Utils/Process.hpp
     Utils/ProfileDescription.hpp

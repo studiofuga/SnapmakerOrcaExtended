@@ -65,7 +65,13 @@ public:
     enum : int { ID_CREATE_PRESET = wxID_HIGHEST + 100 };
 
     // allow_create adds a "Create new profile..." button that ends the dialog with ID_CREATE_PRESET.
-    MachineFilamentMatchDialog(wxWindow* parent, const PresetBundle* bundle, std::vector<Entry> entries, bool allow_create);
+    // intro replaces the introduction text, for callers whose filaments do not come from the printer
+    // (the Spoolman inventory, for one); empty keeps the default one.
+    MachineFilamentMatchDialog(wxWindow*           parent,
+                               const PresetBundle* bundle,
+                               std::vector<Entry>  entries,
+                               bool                allow_create,
+                               const wxString&     intro = wxString());
 
     // Full name of the preset chosen for entry i; empty when the user chose to leave it unmatched.
     std::string selected_preset(size_t i) const;
